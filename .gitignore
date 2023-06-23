@@ -16,6 +16,8 @@ Cargo.lock
 
 .idea
 
+.vscode
+
 ### Emacs template
 # -*- mode: gitignore; -*-
 *~

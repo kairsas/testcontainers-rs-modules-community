@@ -39,39 +39,12 @@ zookeeper-server-start zookeeper.properties &
 #[derive(Debug)]
 pub struct Kafka {
     env_vars: HashMap<String, String>,
+    hostname: String,
 }
 
 impl Default for Kafka {
     fn default() -> Self {
-        let mut env_vars = HashMap::new();
-
-        env_vars.insert(
-            "KAFKA_ZOOKEEPER_CONNECT".to_owned(),
-            format!("localhost:{ZOOKEEPER_PORT}"),
-        );
-        env_vars.insert(
-            "KAFKA_LISTENERS".to_owned(),
-            format!("PLAINTEXT://0.0.0.0:{KAFKA_PORT},BROKER://0.0.0.0:9092"),
-        );
-        env_vars.insert(
-            "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP".to_owned(),
-            "BROKER:PLAINTEXT,PLAINTEXT:PLAINTEXT".to_owned(),
-        );
-        env_vars.insert(
-            "KAFKA_INTER_BROKER_LISTENER_NAME".to_owned(),
-            "BROKER".to_owned(),
-        );
-        env_vars.insert(
-            "KAFKA_ADVERTISED_LISTENERS".to_owned(),
-            format!("PLAINTEXT://localhost:{KAFKA_PORT},BROKER://localhost:9092",),
-        );
-        env_vars.insert("KAFKA_BROKER_ID".to_owned(), "1".to_owned());
-        env_vars.insert(
-            "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR".to_owned(),
-            "1".to_owned(),
-        );
-
-        Self { env_vars }
+        Kafka::with_hostname("localhost".to_owned())
     }
 }
 
@@ -101,8 +74,8 @@ impl Image for Kafka {
     fn exec_after_start(&self, cs: ContainerState) -> Vec<ExecCommand> {
         let mut commands = vec![];
         let cmd = format!(
-            "kafka-configs --alter --bootstrap-server 0.0.0.0:9092 --entity-type brokers --entity-name 1 --add-config advertised.listeners=[PLAINTEXT://127.0.0.1:{},BROKER://localhost:9092]",
-            cs.host_port_ipv4(KAFKA_PORT)
+            "kafka-configs --alter --bootstrap-server 0.0.0.0:9092 --entity-type brokers --entity-name 1 --add-config advertised.listeners=[PLAINTEXT://{0}:{1},BROKER://{0}:9092]",
+            self.hostname, cs.host_port_ipv4(KAFKA_PORT)
         );
         let ready_conditions = vec![WaitFor::message_on_stdout(
             "Checking need to trigger auto leader balancing",
@@ -112,6 +85,47 @@ impl Image for Kafka {
             ready_conditions,
         });
         commands
+    }
+}
+
+impl Kafka {
+    pub fn with_hostname(hostname: String) -> Self {
+        Self {
+            env_vars: Kafka::build_env_vars(hostname.clone()),
+            hostname: hostname,
+        }
+    }
+
+    fn build_env_vars(hostname: String) -> HashMap<String, String> {
+        let mut env_vars = HashMap::new();
+
+        env_vars.insert(
+            "KAFKA_ZOOKEEPER_CONNECT".to_owned(),
+            format!("{}:{ZOOKEEPER_PORT}", hostname),
+        );
+        env_vars.insert(
+            "KAFKA_LISTENERS".to_owned(),
+            format!("PLAINTEXT://0.0.0.0:{KAFKA_PORT},BROKER://0.0.0.0:9092"),
+        );
+        env_vars.insert(
+            "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP".to_owned(),
+            "BROKER:PLAINTEXT,PLAINTEXT:PLAINTEXT".to_owned(),
+        );
+        env_vars.insert(
+            "KAFKA_INTER_BROKER_LISTENER_NAME".to_owned(),
+            "BROKER".to_owned(),
+        );
+        env_vars.insert(
+            "KAFKA_ADVERTISED_LISTENERS".to_owned(),
+            format!("PLAINTEXT://{0}:{KAFKA_PORT},BROKER://{0}:9092", hostname),
+        );
+        env_vars.insert("KAFKA_BROKER_ID".to_owned(), "1".to_owned());
+        env_vars.insert(
+            "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR".to_owned(),
+            "1".to_owned(),
+        );
+
+        env_vars
     }
 }
 
